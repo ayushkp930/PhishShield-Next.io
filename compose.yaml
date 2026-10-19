@@ -1,0 +1,16 @@
+services:
+  phishshield:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      PHISHSHIELD_HOST: 0.0.0.0
+      PHISHSHIELD_PORT: 8000
+      PHISHSHIELD_DB_PATH: /app/data/phishshield.sqlite3
+      PHISHSHIELD_INSPECT_ENABLED: "false"
+      PHISHSHIELD_ALLOWED_ORIGINS: "http://127.0.0.1:8000,http://localhost:8000"
+    volumes:
+      - phishshield-data:/app/data
+    restart: unless-stopped
+volumes:
+  phishshield-data:

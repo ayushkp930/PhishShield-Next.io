@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: phishshield-next-api
+    runtime: python
+    plan: starter
+    buildCommand: pip install .
+    startCommand: uvicorn phishshield.web:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PHISHSHIELD_INSPECT_ENABLED
+        value: "false"
+      - key: PHISHSHIELD_ALLOWED_ORIGINS
+        value: "https://ayushkp930.github.io"
+      - key: PHISHSHIELD_DB_PATH
+        value: "./data/phishshield.sqlite3"

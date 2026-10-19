@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+phishshield/__init__.py
+phishshield/__main__.py
+phishshield/analyzer.py
+phishshield/cli.py
+phishshield/store.py
+phishshield/web.py
+phishshield_next.egg-info/PKG-INFO
+phishshield_next.egg-info/SOURCES.txt
+phishshield_next.egg-info/dependency_links.txt
+phishshield_next.egg-info/entry_points.txt
+phishshield_next.egg-info/requires.txt
+phishshield_next.egg-info/top_level.txt
+tests/test_analyzer.py

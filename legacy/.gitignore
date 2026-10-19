@@ -1,0 +1,19 @@
+# Ignore API Keys and Secrets
+.env
+
+# Ignore Python Virtual Environment
+.venv/
+venv/
+env/
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+
+# Ignore OS specific files
+.DS_Store
+Thumbs.db
+
+# Ignore generated reports (optional, if you don't want to share your test reports)
+reports/*.pdf
+reports/*.txt

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090d16">
+  <meta name="description" content="PhishShield Next — local-first phishing investigation for suspicious URLs, emails, message files, and web pages.">
+  <title>PhishShield Next — Phishing Investigation Workbench</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23090d16'/%3E%3Cpath d='M50 10 82 25v23c0 20-12 33-32 42C30 81 18 68 18 48V25Z' fill='none' stroke='%236ef0c2' stroke-width='7'/%3E%3Cpath d='m36 50 10 10 20-23' fill='none' stroke='%236ef0c2' stroke-width='7'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./assets/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#overview" aria-label="PhishShield home"><span class="brand-mark">◈</span><span class="brand-copy">PHISH<span>SHIELD</span><small>THREAT WORKBENCH / 03</small></span></a>
+      <div class="workspace-label">WORKSPACE <span class="live-dot"></span></div>
+      <nav class="side-nav" aria-label="Primary navigation">
+        <a class="nav-item active" href="#overview" data-nav="overview"><span class="nav-icon">⌂</span> Overview <span class="nav-count">01</span></a>
+        <a class="nav-item" href="#investigate" data-nav="investigate"><span class="nav-icon">⌕</span> Investigate</a>
+        <a class="nav-item" href="#email" data-nav="email"><span class="nav-icon">✉</span> Email forensics</a>
+        <a class="nav-item" href="#page-inspection" data-nav="page-inspection"><span class="nav-icon">⌘</span> Page inspection <span class="nav-mini">API</span></a>
+        <a class="nav-item" href="#batch" data-nav="batch"><span class="nav-icon">▤</span> Batch analysis</a>
+        <a class="nav-item" href="#case-history" data-nav="case-history"><span class="nav-icon">◷</span> Case history</a>
+      </nav>
+      <div class="side-spacer"></div>
+      <div class="sidebar-card">
+        <div class="side-card-icon">✳</div><div class="side-card-title">Analyze. Don't interact.</div>
+        <p>Submitted links are treated as untrusted input. Local analysis never opens a URL.</p>
+        <span class="safe-chip"><i></i> LOCAL MODE AVAILABLE</span>
+      </div>
+      <div class="sidebar-bottom"><span class="avatar">PS</span><span><b>PhishShield Next</b><small>Community edition · 3.0</small></span><button class="icon-button tiny" id="open-settings-side" title="Settings" aria-label="Settings">⚙</button></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" id="mobile-menu" aria-label="Open menu">☰</button>
+        <div class="breadcrumbs"><span>SECURITY OPERATIONS</span><b>/</b><strong id="crumb-current">OVERVIEW</strong></div>
+        <div class="topbar-right"><span class="top-status"><i></i><span id="engine-status">LOCAL ENGINE READY</span></span><button class="settings-button" id="open-settings">⚙ <span>Settings</span></button></div>
+      </header>
+
+      <section class="page-content" id="overview">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="eyebrow-line"></span> DEFENSIVE SECURITY / PHISHING TRIAGE</div>
+            <h1>Think like an analyst.<br><span>Spot the phish.</span></h1>
+            <p class="hero-description">Investigate suspicious links, emails and web content in one workspace. Every finding is explained, exportable, and labeled with what the engine can—and cannot—prove.</p>
+            <div class="hero-actions"><a class="primary-button" href="#investigate">Start an investigation <span>↗</span></a><button class="text-button" id="load-demo">Load sample case <span>→</span></button></div>
+            <div class="hero-footnote"><span class="mini-shield">✓</span> No tracking · Local-first analysis · No URL opened by heuristic scan</div>
+          </div>
+          <div class="hero-art" aria-label="Security shield graphic">
+            <div class="art-grid"></div><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+            <div class="shield-core"><svg viewBox="0 0 128 145" role="img" aria-label="Shield"><path d="M64 7 111 27v36c0 35-19 57-47 73C36 120 17 98 17 63V27Z" fill="none" stroke="currentColor" stroke-width="3"/><path d="m42 70 15 15 31-35" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M64 19 99 34v28c0 26-13 43-35 56-22-13-35-30-35-56V34Z" fill="currentColor" opacity=".07"/></svg><span>TRIAGE CORE</span></div>
+            <div class="art-chip chip-top"><i></i> SIGNAL MONITOR <b>ACTIVE</b></div><div class="art-chip chip-bottom"><span>RISK ENGINE</span><b>EXPLAINABLE</b></div><div class="art-spark spark-a"></div><div class="art-spark spark-b"></div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card"><div class="stat-top"><span>CASES THIS SESSION</span><span class="stat-icon">▣</span></div><div class="stat-number" id="stat-cases">0</div><div class="stat-sub">Stored in this browser</div><div class="stat-sparkline sparkline-a"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></article>
+          <article class="stat-card"><div class="stat-top"><span>HIGH-RISK FLAGS</span><span class="stat-icon red">⌁</span></div><div class="stat-number" id="stat-high">0</div><div class="stat-sub">Heuristic / page findings</div><div class="stat-sparkline sparkline-b"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></article>
+          <article class="stat-card"><div class="stat-top"><span>EMAILS TRIAGED</span><span class="stat-icon violet">✉</span></div><div class="stat-number" id="stat-emails">0</div><div class="stat-sub">Pasted or uploaded locally</div><div class="stat-sparkline sparkline-c"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></article>
+          <article class="stat-card"><div class="stat-top"><span>ANALYSIS MODE</span><span class="stat-icon green">◉</span></div><div class="stat-number small-stat" id="stat-mode">LOCAL</div><div class="stat-sub" id="stat-mode-sub">No threat-intel API connected</div><div class="status-line"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></article>
+        </div>
+
+        <section class="workspace-section" id="investigate">
+          <div class="section-heading"><div><div class="section-kicker">01 / INVESTIGATION</div><h2>What are we looking at?</h2><p>Choose a source. The engine will break the evidence into readable signals.</p></div><span class="section-pill"><i></i> DEFENSIVE ANALYSIS</span></div>
+          <span id="email" class="anchor-marker" aria-hidden="true"></span>
+          <div class="tab-bar" role="tablist" aria-label="Investigation type">
+            <button class="tab active" data-tab="url-panel" role="tab" aria-selected="true"><span>↗</span> URL / DOMAIN</button>
+            <button class="tab" data-tab="email-panel" role="tab" aria-selected="false"><span>✉</span> EMAIL / MESSAGE</button>
+            <button class="tab" data-tab="file-panel" role="tab" aria-selected="false"><span>⇧</span> FILE / HTML</button>
+          </div>
+          <div class="investigation-card">
+            <div class="tab-panel active" id="url-panel" role="tabpanel">
+              <div class="field-label-row"><label for="url-input">SUSPICIOUS URL OR DOMAIN</label><span class="char-count" id="url-char">0 / 4096</span></div>
+              <div class="url-input-wrap"><span class="url-prefix">URL</span><input id="url-input" type="text" maxlength="4096" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://example.com/verify-account"><button id="analyze-url" class="primary-button">Analyze URL <span>↗</span></button></div>
+              <div class="field-footer"><span><i class="tiny-lock">⌑</i> Text-only scan — URL is not opened</span><button class="subtle-button" id="paste-url">Paste from clipboard</button></div>
+              <div class="quick-examples"><span>TRY A SAMPLE</span><button data-sample="https://secure-login-paypal.account-check.click/verify">Brand lookalike</button><button data-sample="http://192.0.2.10/account/login">IP / HTTP</button><button data-sample="https://example.com/">Neutral baseline</button></div>
+            </div>
+            <div class="tab-panel" id="email-panel" role="tabpanel" hidden>
+              <div class="field-label-row"><label for="email-input">RAW EMAIL / MESSAGE CONTENT</label><span class="char-count" id="email-char">0 / 1 MB</span></div>
+              <textarea id="email-input" class="large-textarea" maxlength="1000000" placeholder="Paste the complete message including headers where available…&#10;&#10;From: alerts@example.com&#10;Reply-To: support@other-domain.example&#10;Subject: Urgent account verification"></textarea>
+              <div class="field-footer"><span><i class="tiny-lock">⌑</i> Text analyzed in your browser; content is not uploaded</span><label class="file-button" for="email-file">⇧ Upload .eml / .txt / .html</label><input class="visually-hidden" id="email-file" type="file" accept=".eml,.txt,.html,.htm,.log,.json,.csv,.md,text/plain,text/html,message/rfc822,application/json,text/csv"></div>
+              <div class="form-actions"><button id="analyze-email" class="primary-button">Analyze email <span>↗</span></button><button class="secondary-button" id="clear-email">Clear</button></div>
+            </div>
+            <div class="tab-panel" id="file-panel" role="tabpanel" hidden>
+              <div class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Choose or drop a file"><div class="drop-icon">⇧</div><h3>Drop an email, report or HTML file here</h3><p>Analyze .eml, .txt, .html, .htm, .json, .csv or .log · Up to 2 MB</p><label for="general-file" class="primary-button small-button">Choose file</label><input class="visually-hidden" id="general-file" type="file" accept=".eml,.txt,.html,.htm,.log,.json,.csv,.md,text/plain,text/html,message/rfc822,application/json,text/csv"></div>
+              <div class="file-safety-note"><span>ⓘ</span><div><b>Files are read as text only.</b> PhishShield does not execute macros, open attachments, or render uploaded HTML. Binary attachment malware scanning is not included.</div></div>
+              <div id="file-loaded" class="file-loaded" hidden></div>
+            </div>
+            <div class="fine-print"><span>ⓘ</span> Heuristic results can miss new attacks and flag legitimate content. Confirm with approved threat-intelligence and mail-security tools.</div>
+          </div>
+        </section>
+
+        <section class="workspace-section" id="page-inspection">
+          <div class="section-heading"><div><div class="section-kicker">02 / OPTIONAL LIVE INSPECTION</div><h2>Inspect the page itself</h2><p>With a separately hosted API, fetch a bounded number of public pages and inspect titles, redirects, forms, links and security headers.</p></div><span class="section-pill muted-pill"><i></i> BACKEND REQUIRED</span></div>
+          <div class="live-inspect-card"><div class="live-card-copy"><div class="live-icon">⌘</div><div><h3>Controlled page inspection</h3><p>Does not run page JavaScript, submit forms, log in, or download executable files. Private/local addresses are blocked by the backend.</p><div class="live-features"><span>↳ Redirect chain</span><span>↳ Password forms</span><span>↳ External links</span><span>↳ Security headers</span></div></div></div><div class="live-card-controls"><label for="inspect-url">PUBLIC URL TO INSPECT</label><input id="inspect-url" type="text" maxlength="4096" spellcheck="false" placeholder="https://public-site.example"><div class="inspect-controls-row"><label for="max-pages">Page budget <select id="max-pages"><option value="1">1 page</option><option value="3" selected>Up to 3 pages</option><option value="5">Up to 5 pages</option></select></label><button id="inspect-page" class="primary-button">Inspect page <span>↗</span></button></div><p class="hint-line" id="api-hint">Live inspection is disabled until an API base URL is configured in Settings.</p></div></div>
+        </section>
+
+        <section class="workspace-section" id="batch">
+          <div class="section-heading"><div><div class="section-kicker">03 / BULK TRIAGE</div><h2>Analyze a list of links</h2><p>One URL per line. No submitted URL is opened by this batch mode.</p></div><span class="section-pill">MAX 200 URLS</span></div>
+          <div class="batch-card"><textarea id="batch-input" class="batch-textarea" maxlength="500000" placeholder="https://example.com/login&#10;http://198.51.100.12/verify&#10;https://brand-security-check.example"></textarea><div class="batch-footer"><span id="batch-count">0 URLS DETECTED</span><button class="primary-button" id="analyze-batch">Analyze batch <span>↗</span></button></div><div id="batch-results" class="batch-results" hidden></div></div>
+        </section>
+
+        <section class="workspace-section results-section" id="results-section" hidden>
+          <div class="section-heading"><div><div class="section-kicker">04 / EVIDENCE REVIEW</div><h2 id="result-title">Investigation report</h2><p id="result-subtitle">Review the evidence and the confidence limits.</p></div><div class="result-actions"><button class="secondary-button" id="export-json">↓ JSON</button><button class="secondary-button" id="print-report">↗ Print / PDF</button></div></div>
+          <div id="result-output" class="result-output"></div>
+        </section>
+
+        <section class="workspace-section" id="case-history">
+          <div class="section-heading"><div><div class="section-kicker">05 / CASE MANAGEMENT</div><h2>Recent investigations</h2><p>Your latest cases stay in this browser, unless a backend report is explicitly requested.</p></div><div class="history-actions"><span id="history-count" class="section-pill">0 CASES</span><button class="subtle-button" id="clear-history">Clear history</button></div></div>
+          <div class="history-card"><div class="history-toolbar"><div class="history-search"><span>⌕</span><input id="history-filter" type="search" placeholder="Filter targets or verdicts…"></div><button class="subtle-button" id="export-history">Export history ↓</button></div><div class="history-table-wrap"><table class="history-table"><thead><tr><th>CASE / TARGET</th><th>TYPE</th><th>VERDICT</th><th>RISK</th><th>TIME</th><th>REPORT</th></tr></thead><tbody id="history-body"><tr><td colspan="6" class="empty-cell">No cases yet. Start an investigation above.</td></tr></tbody></table></div></div>
+        </section>
+
+        <footer class="footer"><div class="footer-brand"><span class="brand-mark">◈</span><b>PHISHSHIELD NEXT</b> <span>v3.0 · COMMUNITY DEFENSIVE TOOL</span></div><div class="footer-links"><a href="https://github.com/" target="_blank" rel="noreferrer">Project-ready for GitHub</a><button id="open-settings-footer">API settings</button></div><p>Not a safety guarantee or an enterprise malware verdict. Never paste passwords, session cookies, private keys, or confidential content into a public instance.</p></footer>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <div class="modal-backdrop" id="settings-modal" hidden>
+    <div class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title"><div class="modal-heading"><div><div class="section-kicker">WORKSPACE CONFIGURATION</div><h2 id="settings-title">Connection settings</h2></div><button class="icon-button" id="close-settings" aria-label="Close settings">×</button></div><p class="modal-description">The hosted GitHub Pages version runs local heuristics in your browser. Add the base URL of your own deployed PhishShield API to enable controlled live page inspection. Don't add API keys here.</p><label for="api-base-input">PHISHSHIELD API BASE URL</label><input id="api-base-input" class="settings-input" type="url" placeholder="https://your-phishshield-api.example.com"><div class="settings-callout"><b>Privacy and deployment note</b><p>This URL is stored in this browser's local storage. Use HTTPS for a deployed API. The API must allow this website's origin using CORS. A public scanning API also needs abuse controls, rate limits and monitoring.</p></div><div class="modal-actions"><button id="test-api" class="secondary-button">Test connection</button><button id="save-settings" class="primary-button">Save settings</button><button id="remove-api" class="text-button">Remove API</button></div><div id="api-test-status" class="api-test-status" role="status"></div><button class="privacy-link" id="clear-local-data">Clear local cases and connection settings</button></div>
+  </div>
+  <script src="./assets/app.js" defer></script>
+</body></html>

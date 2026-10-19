@@ -1,0 +1,8 @@
+﻿requests
+httpx
+python-whois
+colorama
+python-dotenv
+groq
+google-genai
+fpdf

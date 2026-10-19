@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: phishshield-next
+Version: 2.0.0
+Summary: Defensive phishing triage with web UI and CLI
+Requires-Python: >=3.10
+Requires-Dist: fastapi<1,>=0.115
+Requires-Dist: uvicorn[standard]<1,>=0.30
+Requires-Dist: jinja2<4,>=3.1
+Requires-Dist: python-multipart<1,>=0.0.9
+Requires-Dist: pydantic<3,>=2.7
+Requires-Dist: httpx<1,>=0.27
+Requires-Dist: python-dotenv<2,>=1.0
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8; extra == "dev"
+Requires-Dist: ruff<1,>=0.6; extra == "dev"
