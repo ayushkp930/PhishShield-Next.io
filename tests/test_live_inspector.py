@@ -35,8 +35,10 @@ def test_static_ui_served_from_backend():
         response = client.get("/")
         assert response.status_code == 200
         assert "PhishShield Next" in response.text
+        assert "Run threat-intel checks" in response.text
+        assert "WHOIS / RDAP lookup" in response.text
         assert client.get("/assets/app.js").status_code == 200
-        assert client.get("/health").json()["version"] == "3.0.0"
+        assert client.get("/health").json()["version"] == "3.1.0"
 
 
 def test_live_inspection_disabled_when_env_not_enabled(monkeypatch):

@@ -1,4 +1,4 @@
-# PhishShield Next 3.0
+# PhishShield Next 3.1.0
 
 **A defensive phishing investigation workbench** for suspicious URLs, raw email messages, HTML files, and bounded public-page inspection. It includes a browser-only frontend for GitHub Pages, a FastAPI backend, a CLI, explainable indicators, downloadable JSON/CSV reports, and browser-local case history.
 
@@ -19,9 +19,11 @@
 ### Backend and CLI
 - `POST /api/v1/scan` — local URL heuristics.
 - `POST /api/v1/email-analyze` — MIME/header/body triage, attachment filename metadata, reported SPF/DKIM/DMARC status parsing, URL extraction and URL triage. It does not extract or execute attachment content.
+- `POST /api/v1/reputation` — opt-in VirusTotal URL report lookup, Google Web Risk lookup, URLScan historical domain search, public-IP AbuseIPDB lookup, and WHOIS/RDAP metadata. This never submits a new URLScan scan.
+- `POST /api/v1/whois` — domain or public-IP registration/network metadata from RDAP, without sharing the full URL path/query.
 - `POST /api/v1/inspect` — optional bounded inspection of up to 5 public HTML pages on the same origin. It records redirect chains, HTTP status, title, selected response headers, form destinations, password fields, iframes and same-origin links. It does not visit external links.
 - `GET /health`, `GET /api/v1/history`, `GET /api/v1/scan/{id}`, `GET /report/{id}.json`, interactive docs at `/api/docs`.
-- CLI commands: `phishshield scan URL`, `phishshield email FILE`, `phishshield inspect URL --pages 3`, and `phishshield web`.
+- CLI commands: `phishshield scan URL`, `phishshield email FILE`, `phishshield reputation URL`, `phishshield whois DOMAIN`, `phishshield inspect URL --pages 3`, and `phishshield web`.
 - SQLite report store for backend-originated scans.
 
 ### Safe inspection boundaries
@@ -49,6 +51,9 @@ Open `http://127.0.0.1:8000`. The static UI and API are served from the same loc
 phishshield scan 'https://secure-login-paypal.account-check.click/verify'
 phishshield scan 'https://example.com/login' --json > report.json
 phishshield email sample.eml --json > email-report.json
+# Explicitly share a non-sensitive URL with configured provider lookups + WHOIS/RDAP
+phishshield reputation 'https://example.com/' --json > reputation-report.json
+phishshield whois example.com --json > whois-report.json
 # Explicitly fetch up to 3 pages from a public site (CLI-only; respects same-origin limits)
 phishshield inspect 'https://public.example' --pages 3 --json > page-report.json
 pytest -q
@@ -58,7 +63,7 @@ The CLI email analyzer parses message/MIME metadata and reports attachment **nam
 
 ## Deploy the website to GitHub Pages
 
-The `docs/` folder is a complete static site. No Python backend is needed for URL text triage, email paste/upload, HTML source inspection, local case history, batch analysis or report exports.
+The `docs/` folder is a complete static site. No Python backend is needed for URL text triage, email paste/upload, HTML source inspection, local case history, batch analysis or report exports. Threat-intelligence and WHOIS/RDAP lookups require the separately deployed backend.
 
 1. Push this repository to GitHub.
 2. Open **Settings → Pages**.
@@ -83,7 +88,13 @@ pip install .
 uvicorn phishshield.web:app --host 0.0.0.0 --port "$PORT"
 ```
 
-To run with bounded inspection locally, set `PHISHSHIELD_INSPECT_ENABLED=true` in `.env`. **Never add a VirusTotal, URLScan, or other provider secret to the frontend JavaScript or GitHub Pages repo.** Those providers are not integrated in this release; avoid claiming external reputation checks took place.
+To run with bounded inspection locally, set `PHISHSHIELD_INSPECT_ENABLED=true` in `.env`. **Never add a VirusTotal, URLScan, Google Web Risk, AbuseIPDB, or other provider secret to frontend JavaScript or GitHub Pages source.** This release integrates backend-only lookups. Configure the following secrets on the backend host: `VIRUSTOTAL_API_KEY`, `URLSCAN_API_KEY`, `GOOGLE_WEB_RISK_API_KEY`, and `ABUSEIPDB_API_KEY`. WHOIS/RDAP does not require an API key.
+
+The external reputation endpoint is disabled by default in `render.yaml`; keep it disabled on an unrestricted public service until a durable abuse-control/authentication layer and usage budgets are in place. The current per-process rate limit is only a backstop. The UI requires a clear user consent checkbox before calling the endpoint. The VirusTotal lookup and Google Web Risk check send the **full submitted URL** to those providers; URLScan searches historic records by **hostname only**; AbuseIPDB receives only one **public resolved IP**; WHOIS/RDAP receives only the registered domain or public IP. This tool blocks common token/reset/invite keys in URL query parameters before third-party reputation lookup. Never submit private or sensitive URLs. VirusTotal documents that queried/submitted indicators may be added to its threat-intelligence dataset. <https://gtidocs.virustotal.com/reference/analysis>
+
+For local development, create `.env` from `.env.example` and put rotated secrets there (never commit `.env`). On Render, use the service Environment dashboard for each secret, set `PHISHSHIELD_REPUTATION_ENABLED=true` only after abuse controls are ready, and enable `PHISHSHIELD_WHOIS_ENABLED=true` if WHOIS is desired. Redeploy after changing environment variables.
+
+See [API_SETUP.md](API_SETUP.md) for provider key names, local configuration, backend deployment, rate-limit notes, smoke tests, and official documentation.
 
 ## Reports and privacy
 
@@ -108,6 +119,8 @@ docs/                   GitHub Pages static app
 phishshield/analyzer.py Local URL + email triage for API/CLI
 phishshield/live_inspector.py Bounded public page inspector
 phishshield/web.py      FastAPI backend
+phishshield/intel.py    Backend-only reputation and WHOIS/RDAP lookups
+API_SETUP.md            Provider key and deployment guide
 phishshield/cli.py      CLI
 phishshield/store.py    SQLite report store
 phishshield/static_site/Packaged UI fallback for installed backend
@@ -117,4 +130,4 @@ legacy/                 Original PhishShield Pro project, preserved
 
 ## Not yet included
 
-No commercial threat-intelligence API, cloud browser sandbox, ML model, attachment detonation, SPF/DKIM/DMARC DNS verification, multi-user authentication, signed evidence chain, or enterprise case-management/SIEM workflow is included. Those must be implemented and validated before the project is described as production-grade or enterprise-ready.
+No URLScan fresh scan submission, cloud browser sandbox, ML model, attachment detonation, independent SPF/DKIM/DMARC DNS verification, multi-user authentication, signed evidence chain, durable distributed rate limiting, or enterprise case-management/SIEM workflow is included. Provider lookup results are not weighted into a single risk score; review each source separately. These gaps must be addressed and validated before this project is described as production-grade or enterprise-ready.

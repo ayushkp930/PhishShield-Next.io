@@ -9,6 +9,26 @@ services:
     envVars:
       - key: PHISHSHIELD_INSPECT_ENABLED
         value: "false"
+      - key: PHISHSHIELD_REPUTATION_ENABLED
+        value: "false"
+      - key: PHISHSHIELD_WHOIS_ENABLED
+        value: "false"
+      - key: PHISHSHIELD_REPUTATION_LIMIT
+        value: "6"
+      - key: PHISHSHIELD_REPUTATION_WINDOW_SECONDS
+        value: "600"
+      - key: PHISHSHIELD_WHOIS_LIMIT
+        value: "15"
+      - key: PHISHSHIELD_WHOIS_WINDOW_SECONDS
+        value: "600"
+      - key: VIRUSTOTAL_API_KEY
+        sync: false
+      - key: URLSCAN_API_KEY
+        sync: false
+      - key: GOOGLE_WEB_RISK_API_KEY
+        sync: false
+      - key: ABUSEIPDB_API_KEY
+        sync: false
       - key: PHISHSHIELD_ALLOWED_ORIGINS
         value: "https://ayushkp930.github.io"
       - key: PHISHSHIELD_DB_PATH

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "phishshield-next"
-version = "3.0.0"
+version = "3.1.0"
 description = "Defensive phishing triage with web UI and CLI"
 requires-python = ">=3.10"
 dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1", "jinja2>=3.1,<4", "python-multipart>=0.0.9,<1", "pydantic>=2.7,<3", "httpx>=0.27,<1", "aiohttp>=3.9,<4", "python-dotenv>=1.0,<2"]
