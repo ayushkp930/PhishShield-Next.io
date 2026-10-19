@@ -61,7 +61,8 @@ def test_urlscan_is_historical_search_and_no_scan_submission(monkeypatch):
     result = asyncio.run(intel.check_urlscan("example.com"))
     assert result["status"] == "record_found"
     assert result["count"] == 1
-    assert "no new scan was submitted" in result["summary"]
+    assert result["new_scan"]["status"] == "not_requested"
+    assert "historical URLScan" in result["summary"]
 
 
 def test_webrisk_reports_threat_list_match(monkeypatch):
@@ -148,3 +149,42 @@ def test_external_reputation_rejects_non_public_targets(monkeypatch):
         asyncio.run(intel.lookup_reputation("http://192.168.1.10/login"))
     with pytest.raises(ValueError, match="local/internal"):
         asyncio.run(intel.lookup_reputation("http://service.internal/login"))
+
+
+def test_urlscan_fresh_submission_uses_private_visibility_and_returns_scan_result(monkeypatch):
+    class FakeResponse:
+        def __init__(self, status_code=200, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+        def json(self):
+            return self._payload
+
+    async def fake_get_json(url, headers=None, params=None):
+        if url.endswith("/search/"):
+            return FakeResponse(200, {"total": 0, "results": []}), {"total": 0, "results": []}
+        if "/result/scan-123/" in url:
+            data = {"page": {"title": "Example", "url": "https://example.com/", "domain": "example.com", "ip": "93.184.216.34"},
+                    "verdicts": {"overall": {"malicious": False, "score": 0}},
+                    "stats": {"requests": 14, "dataLength": 18000},
+                    "lists": {"domains": ["example.com"], "ips": ["93.184.216.34"], "trackers": []}}
+            return FakeResponse(200, data), data
+        raise AssertionError(url)
+
+    async def fake_post_json(url, headers=None, json_body=None):
+        assert url == "https://urlscan.io/api/v1/scan/"
+        assert headers == {"API-Key": "test-key"}
+        assert json_body["url"] == "https://example.com/"
+        assert json_body["visibility"] == "private"
+        return FakeResponse(200, {"uuid": "scan-123", "visibility": "private"}), {"uuid": "scan-123", "visibility": "private"}
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(intel, "_api_key", lambda name: "test-key" if name == "URLSCAN_API_KEY" else "")
+    monkeypatch.setattr(intel, "_get_json", fake_get_json)
+    monkeypatch.setattr(intel, "_post_json", fake_post_json)
+    monkeypatch.setattr(intel.asyncio, "sleep", no_sleep)
+    result = asyncio.run(intel.check_urlscan("example.com", target_url="https://example.com/", submit_fresh_scan=True))
+    assert result["new_scan"]["status"] == "completed"
+    assert result["new_scan"]["visibility"] == "private"
+    assert result["new_scan"]["result"]["requests"] == 14

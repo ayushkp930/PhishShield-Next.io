@@ -23,7 +23,7 @@ def test_reputation_route_combines_local_report_with_mocked_provider_results(tmp
     monkeypatch.setenv("PHISHSHIELD_REPUTATION_ENABLED", "true")
     monkeypatch.setenv("PHISHSHIELD_DB_PATH", str(tmp_path / "history.sqlite3"))
 
-    async def fake_lookup(_target):
+    async def fake_lookup(_target, **kwargs):
         return {
             "target": "https://example.com/", "hostname": "example.com",
             "configured_provider_count": 1,

@@ -35,10 +35,11 @@ def test_static_ui_served_from_backend():
         response = client.get("/")
         assert response.status_code == 200
         assert "PhishShield Next" in response.text
-        assert "Run threat-intel checks" in response.text
-        assert "WHOIS / RDAP lookup" in response.text
+        assert "Run full investigation" in response.text
+        assert "WHOIS / RDAP" in response.text
+        assert "Certificate transparency history" in response.text or "certificate-transparency" in response.text.lower()
         assert client.get("/assets/app.js").status_code == 200
-        assert client.get("/health").json()["version"] == "3.1.0"
+        assert client.get("/health").json()["version"] == "3.2.0"
 
 
 def test_live_inspection_disabled_when_env_not_enabled(monkeypatch):
@@ -70,3 +71,13 @@ def test_api_email_analyzer_returns_scored_findings():
     body = response.json()
     assert body["verdict"] in {"SUSPICIOUS", "HIGH RISK"}
     assert any(s["id"] == "reply-mismatch" for s in body["signals"])
+
+
+def test_live_inspection_blocks_sensitive_query_parameters(monkeypatch):
+    monkeypatch.setenv("PHISHSHIELD_INSPECT_ENABLED", "true")
+    from phishshield import web
+    web._rate_events.clear()
+    with TestClient(app) as client:
+        response = client.post("/api/v1/inspect", json={"url": "https://example.com/reset?token=secret", "max_pages": 1})
+    assert response.status_code == 422
+    assert "sensitive query" in response.json()["detail"]

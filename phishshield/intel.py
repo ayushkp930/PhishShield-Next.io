@@ -18,7 +18,7 @@ import httpx
 
 from .analyzer import analyze_url
 
-USER_AGENT = "PhishShield-Next/3.1 (defensive security triage; contact: project maintainer)"
+USER_AGENT = "PhishShield-Next/3.2 (defensive security triage; contact: project maintainer)"
 TIMEOUT = httpx.Timeout(9.0, connect=4.0)
 _SENSITIVE_QUERY_KEYS = re.compile(
     r"(?:^|_)(?:token|access.?token|refresh.?token|secret|password|passwd|session|auth|authorization|"
@@ -121,16 +121,84 @@ async def _get_json(url: str, *, headers: dict | None = None, params: dict | Non
         return None, None
 
 
-async def check_virustotal(url: str) -> dict:
+async def _post_form_json(url: str, *, headers: dict, data: dict) -> tuple[httpx.Response | None, dict | None]:
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}) as client:
+            response = await client.post(url, headers=headers, data=data)
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        return response, payload if isinstance(payload, dict) else None
+    except (httpx.HTTPError, asyncio.TimeoutError):
+        return None, None
+
+
+async def _post_json(url: str, *, headers: dict, json_body: dict) -> tuple[httpx.Response | None, dict | None]:
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, headers={"User-Agent": USER_AGENT, "Accept": "application/json", "Content-Type": "application/json"}) as client:
+            response = await client.post(url, headers=headers, json=json_body)
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        return response, payload if isinstance(payload, dict) else None
+    except (httpx.HTTPError, asyncio.TimeoutError):
+        return None, None
+
+
+async def check_virustotal(url: str, *, submit_if_missing: bool = False) -> dict:
     key = _api_key("VIRUSTOTAL_API_KEY")
     if not key:
         return _provider("not_configured", "VIRUSTOTAL_API_KEY is not configured on the backend.")
-    # VirusTotal URL IDs are URL-safe base64 without padding. Lookup only; never submit/rescan here.
+    # VirusTotal URL IDs are URL-safe base64 without padding; fresh submission is an explicit opt-in below.
     url_id = base64.urlsafe_b64encode(url.encode("utf-8")).decode("ascii").rstrip("=")
     response, data = await _get_json(
         f"https://www.virustotal.com/api/v3/urls/{url_id}",
         headers={"x-apikey": key},
     )
+    if response is None:
+        return _provider("unavailable", "VirusTotal could not be reached or timed out.")
+    # An unknown URL can optionally be submitted for a new analysis, but this must be
+    # explicitly requested by the user. VirusTotal documents that queried/submitted
+    # indicators may become part of its community dataset; never enable this implicitly.
+    if response.status_code == 404 and submit_if_missing:
+        submit_response, submit_data = await _post_form_json(
+            "https://www.virustotal.com/api/v3/urls", headers={"x-apikey": key}, data={"url": url}
+        )
+        if submit_response is None:
+            return _provider("unavailable", "VirusTotal URL submission could not be reached or timed out.")
+        if submit_response.status_code not in (200, 201) or not submit_data:
+            return _http_error(submit_response)
+        analysis_id = str((submit_data.get("data") or {}).get("id") or "")
+        if not analysis_id:
+            return _provider("submitted", "VirusTotal accepted the URL but did not return an analysis identifier.", submitted=True)
+        analysis_status = "queued"
+        # Bounded polling only; do not hammer provider quotas waiting for a scan.
+        for _ in range(3):
+            await asyncio.sleep(1.5)
+            analysis_response, analysis_data = await _get_json(
+                f"https://www.virustotal.com/api/v3/analyses/{quote(analysis_id, safe='')}",
+                headers={"x-apikey": key},
+            )
+            if analysis_response is None or analysis_response.status_code != 200 or not analysis_data:
+                break
+            analysis_status = str(((analysis_data.get("data") or {}).get("attributes") or {}).get("status") or "queued")
+            if analysis_status == "completed":
+                break
+        # Prefer the cached URL report after submission; it usually contains the full engine results.
+        if analysis_status == "completed":
+            response, data = await _get_json(
+                f"https://www.virustotal.com/api/v3/urls/{url_id}", headers={"x-apikey": key}
+            )
+        else:
+            return _provider(
+                "submitted", "VirusTotal accepted a fresh analysis request; processing is still pending. Re-run the investigation shortly to fetch the completed report.",
+                submitted=True, analysis_id=analysis_id,
+                analysis_url=f"https://www.virustotal.com/gui/analyses/{quote(analysis_id, safe='')}",
+                analysis_status=analysis_status,
+                report_url=f"https://www.virustotal.com/gui/url/{url_id}",
+            )
     if response is None:
         return _provider("unavailable", "VirusTotal could not be reached or timed out.")
     if response.status_code != 200 or not data:
@@ -140,15 +208,39 @@ async def check_virustotal(url: str) -> dict:
     malicious = int(stats.get("malicious") or 0)
     suspicious = int(stats.get("suspicious") or 0)
     total = sum(int(v or 0) for v in stats.values() if isinstance(v, (int, float)))
+    all_engine_results = []
     detections = []
-    for engine, record in (attrs.get("last_analysis_results") or {}).items():
+    raw_results = attrs.get("last_analysis_results") or {}
+    for engine, record in raw_results.items():
+        if not isinstance(record, dict):
+            continue
+        normalized = {
+            "engine": str(engine)[:120],
+            "category": str(record.get("category") or "unknown")[:40],
+            "result": str(record.get("result") or "")[:240],
+            "method": str(record.get("method") or "")[:80],
+            "engine_version": str(record.get("engine_version") or "")[:80],
+            "engine_update": str(record.get("engine_update") or "")[:80],
+        }
+        all_engine_results.append(normalized)
         if isinstance(record, dict) and record.get("category") in {"malicious", "suspicious"}:
-            detections.append({"engine": str(engine)[:80], "category": record.get("category"), "result": str(record.get("result") or "")[:160]})
+            detections.append(normalized)
     provider_status = "threat_found" if malicious > 0 or suspicious > 0 else "no_match"
     return _provider(
         provider_status, f"{malicious} malicious and {suspicious} suspicious detection(s) across {total} reported engine result(s). No-match is not proof of safety.",
         malicious=malicious, suspicious=suspicious, harmless=int(stats.get("harmless") or 0), undetected=int(stats.get("undetected") or 0),
-        engine_results=total, last_analysis_date=attrs.get("last_analysis_date"), detections=detections[:10],
+        engine_results=total, detections=detections[:200],
+        all_engine_results=all_engine_results[:200], all_engine_results_truncated=len(all_engine_results) > 200,
+        last_analysis_date=attrs.get("last_analysis_date"),
+        last_submission_date=attrs.get("last_submission_date"),
+        times_submitted=attrs.get("times_submitted"),
+        last_http_response_code=attrs.get("last_http_response_code"),
+        last_final_url=str(attrs.get("last_final_url") or "")[:2048] or None,
+        title=str(attrs.get("title") or "")[:300] or None,
+        categories={str(k)[:80]: str(v)[:160] for k, v in (attrs.get("categories") or {}).items() if isinstance(k, str) and v is not None},
+        tags=[str(x)[:120] for x in (attrs.get("tags") or [])[:100]],
+        reputation=attrs.get("reputation") if isinstance(attrs.get("reputation"), (int, float)) else None,
+        total_votes={str(k)[:80]: int(v) for k, v in (attrs.get("total_votes") or {}).items() if isinstance(v, (int, float))},
         report_url=f"https://www.virustotal.com/gui/url/{url_id}",
     )
 
@@ -172,20 +264,22 @@ async def check_webrisk(url: str) -> dict:
     return _provider("no_match", "No match in the queried Web Risk lists; this is not proof that the URL is safe.", threat_types=[])
 
 
-async def check_urlscan(hostname: str) -> dict:
+async def check_urlscan(hostname: str, *, target_url: str = "", submit_fresh_scan: bool = False) -> dict:
     key = _api_key("URLSCAN_API_KEY")
     if not key:
         return _provider("not_configured", "URLSCAN_API_KEY is not configured on the backend.")
-    # Search prior scan records only. This does not submit the user's URL or create a new scan.
+    # Search previous scan records. A fresh scan is a separate explicit user opt-in.
     response, data = await _get_json(
         "https://urlscan.io/api/v1/search/",
         headers={"API-Key": key},
-        params={"q": f"domain:{hostname}", "size": "5"},
+        params={"q": f"domain:{hostname}", "size": "10"},
     )
     if response is None:
         return _provider("unavailable", "URLScan.io could not be reached or timed out.")
     if response.status_code != 200 or data is None:
-        return _http_error(response)
+        history = _http_error(response)
+        history.update({"historical_count": 0, "historical_results": [], "new_scan": {"status": "not_requested"}})
+        return history
     results = []
     for item in data.get("results") or []:
         task = item.get("task") or {}
@@ -200,13 +294,86 @@ async def check_urlscan(hostname: str) -> dict:
             "time": str(task.get("time") or "")[:80],
             "visibility": str(task.get("visibility") or "")[:20],
             "malicious": bool(overall.get("malicious") or urlscan_verdict.get("malicious")),
+            "overall_score": overall.get("score"),
             "result_url": ("https://urlscan.io/result/" + quote(str(item.get("_id")), safe="")) if item.get("_id") else "",
         })
     count = data.get("total")
     count = count if isinstance(count, int) else len(results)
     found_malicious = any(x.get("malicious") for x in results)
     status = "threat_found" if found_malicious else ("record_found" if results else "no_match")
-    return _provider(status, f"Found {count} historical URLScan result(s) for {hostname}; no new scan was submitted. Historical results may be incomplete or stale.", count=count, results=results)
+    new_scan = {"status": "not_requested", "summary": "No new URLScan submission was requested."}
+    if submit_fresh_scan:
+        if not target_url:
+            new_scan = {"status": "error", "summary": "No complete URL was provided for a fresh URLScan submission."}
+        else:
+            submit_response, submit_data = await _post_json(
+                "https://urlscan.io/api/v1/scan/",
+                headers={"API-Key": key},
+                json_body={"url": target_url, "visibility": "private", "tags": ["phishshield-next"]},
+            )
+            if submit_response is None:
+                new_scan = {"status": "unavailable", "summary": "URLScan private-scan submission could not be reached or timed out."}
+            elif submit_response.status_code not in (200, 201, 202) or not submit_data:
+                err = _http_error(submit_response)
+                new_scan = {"status": err.get("status", "error"), "summary": err.get("summary", "URLScan rejected the private scan request."), "visibility": "private"}
+            else:
+                scan_id = str(submit_data.get("uuid") or "")[:100]
+                visibility = str(submit_data.get("visibility") or "private")[:20]
+                result_url = ("https://urlscan.io/result/" + quote(scan_id, safe="")) if scan_id else ""
+                scan_result = None
+                # Poll for a short, bounded interval. If processing is still pending the report says so.
+                if scan_id:
+                    # URLScan recommends allowing processing time before polling. Keep this bounded
+                    # so the combined endpoint can return a clear pending state instead of hanging.
+                    await asyncio.sleep(10.0)
+                    for poll_index in range(3):
+                        poll_response, poll_data = await _get_json(
+                            f"https://urlscan.io/api/v1/result/{quote(scan_id, safe='')}/",
+                            headers={"API-Key": key},
+                        )
+                        if poll_response is not None and poll_response.status_code == 200 and isinstance(poll_data, dict):
+                            scan_result = poll_data
+                            break
+                        if poll_response is not None and poll_response.status_code not in (404, 429):
+                            break
+                        if poll_index < 2:
+                            await asyncio.sleep(2.0)
+                if scan_result:
+                    page = scan_result.get("page") or {}
+                    verdicts = scan_result.get("verdicts") or {}
+                    overall = verdicts.get("overall") or {}
+                    urlscan_v = verdicts.get("urlscan") or {}
+                    stats = scan_result.get("stats") or {}
+                    lists = scan_result.get("lists") or {}
+                    scan_details = {
+                        "title": str(page.get("title") or "")[:300],
+                        "url": str(page.get("url") or target_url)[:2048],
+                        "domain": str(page.get("domain") or "")[:253],
+                        "ip": str(page.get("ip") or "")[:80],
+                        "country": str(page.get("country") or "")[:80],
+                        "asn": str(page.get("asn") or "")[:150],
+                        "server": str(page.get("server") or "")[:200],
+                        "mime_type": str(page.get("mimeType") or "")[:150],
+                        "overall_malicious": bool(overall.get("malicious") or urlscan_v.get("malicious")),
+                        "overall_score": overall.get("score"),
+                        "requests": stats.get("requests"),
+                        "data_length": stats.get("dataLength"),
+                        "domains_observed": [str(x)[:253] for x in (lists.get("domains") or [])[:100]],
+                        "ips_observed": [str(x)[:80] for x in (lists.get("ips") or [])[:100]],
+                        "trackers_observed": [str(x)[:253] for x in (lists.get("trackers") or [])[:100]],
+                        "result_url": result_url,
+                    }
+                    new_scan = {"status": "completed", "summary": "URLScan private scan completed; see the provider result and extracted metadata.", "scan_id": scan_id, "visibility": visibility, "result_url": result_url, "result": scan_details}
+                    if scan_details["overall_malicious"]:
+                        status = "threat_found"
+                else:
+                    new_scan = {"status": "submitted", "summary": "URLScan accepted the private scan; processing was not complete within the brief polling window. Re-run investigation or open the result later.", "scan_id": scan_id, "visibility": visibility, "result_url": result_url}
+    summary = f"Found {count} historical URLScan result(s) for {hostname}. Historical results may be incomplete or stale."
+    return _provider(
+        status, summary, count=count, results=results,
+        new_scan=new_scan, historical_count=count, historical_results=results,
+        limitations=["Historical URLScan results can be stale or incomplete.", "Fresh URLScan scans execute the target in URLScan's remote browser and should only be requested for URLs you are authorized to share.", "Private visibility avoids public search listings but does not mean the provider never processes the URL."],
+    )
 
 
 async def _resolve_public_ip(hostname: str) -> str | None:
@@ -259,7 +426,10 @@ async def check_abuseipdb(hostname: str) -> dict:
     return _provider(
         provider_status, summary + " This score is provider-reported reputation, not a definitive verdict.", ip_address=public_ip, abuse_confidence_score=score, total_reports=total_reports,
         distinct_users=int(item.get("numDistinctUsers") or 0), last_reported_at=item.get("lastReportedAt"),
-        country_code=item.get("countryCode"), isp=item.get("isp"), usage_type=item.get("usageType"), domain=item.get("domain"),
+        country_code=item.get("countryCode"), country_name=item.get("countryName"), isp=item.get("isp"),
+        usage_type=item.get("usageType"), domain=item.get("domain"), is_tor=bool(item.get("isTor")),
+        is_whitelisted=item.get("isWhitelisted") if isinstance(item.get("isWhitelisted"), bool) else None,
+        hostnames=[str(x)[:253] for x in (item.get("hostnames") or [])[:50]],
         report_url=f"https://www.abuseipdb.com/check/{quote(public_ip, safe=':')}",
     )
 
@@ -335,32 +505,47 @@ async def lookup_whois_rdap(target: str) -> dict:
     statuses = [str(x)[:100] for x in data.get("status") or []][:30]
     registrar = _find_registrar(data.get("entities") or [])
     title = data.get("ldhName") or data.get("name") or query_target
+    event_rows = [{"action": str(e.get("eventAction") or "")[:100], "date": str(e.get("eventDate") or "")[:80]}
+                  for e in (data.get("events") or []) if isinstance(e, dict) and (e.get("eventAction") or e.get("eventDate"))][:50]
+    entity_roles = sorted({str(role)[:80] for e in (data.get("entities") or []) if isinstance(e, dict) for role in (e.get("roles") or [])})[:30]
+    links = [{"rel": str(x.get("rel") or "")[:80], "href": str(x.get("href") or "")[:500], "type": str(x.get("type") or "")[:120]}
+             for x in (data.get("links") or []) if isinstance(x, dict) and x.get("href")][:30]
+    notices = [{"title": str(x.get("title") or "")[:200], "description": [str(y)[:500] for y in (x.get("description") or [])[:5]],
+                "links": [{"href": str(z.get("href") or "")[:500], "rel": str(z.get("rel") or "")[:80]} for z in (x.get("links") or [])[:5] if isinstance(z, dict)]}
+               for x in (data.get("notices") or []) if isinstance(x, dict)][:10]
     fields = {
         "target": query_target, "lookup_type": query_kind, "registered_name": str(title)[:253],
+        "handle": str(data.get("handle") or "")[:150] or None,
+        "object_class_name": str(data.get("objectClassName") or "")[:100] or None,
         "registrar": registrar, "created_at": events.get("registration") or events.get("registered"),
         "updated_at": events.get("last changed") or events.get("last update of RDAP database"),
         "expires_at": events.get("expiration") or events.get("expiry"),
-        "nameservers": nameservers, "statuses": statuses, "rdap_url": str(response.url)[:500],
+        "events": event_rows, "nameservers": nameservers, "statuses": statuses,
+        "dnssec_signed": bool((data.get("secureDNS") or {}).get("delegationSigned")) if isinstance(data.get("secureDNS"), dict) else None,
+        "entity_roles": entity_roles, "notices": notices, "links": links,
+        "rdap_url": str(response.url)[:500],
     }
     return _provider("record_found", f"RDAP registration/network metadata retrieved for {query_target}; registration metadata does not indicate whether the domain is malicious.", **fields)
 
 
-async def lookup_reputation(target: str) -> dict:
-    """Call configured read-only reputation providers plus WHOIS/RDAP metadata.
+async def lookup_reputation(target: str, *, submit_unknown_to_virustotal: bool = False, submit_urlscan_private: bool = False, include_whois: bool = True) -> dict:
+    """Query configured reputation providers and optional WHOIS/RDAP metadata.
 
-    This function never fetches the target website and never submits a fresh URL scan to URLScan.
-    The caller must enforce explicit external-sharing consent before invoking it.
+    Does not fetch the target page itself. A fresh VirusTotal URL submission or URLScan
+    private scan occurs only when the caller explicitly opts in after collecting consent.
+    The caller must enforce external-sharing consent before invoking this function.
     """
     url, hostname, _query = _normalise_target(target)
     if has_sensitive_query(url):
         raise ValueError("This URL appears to contain a token, password, invite/reset code, or other sensitive query parameter. Remove the query string and try a sanitized URL before external reputation checks.")
     tasks = {
-        "virustotal": check_virustotal(url),
+        "virustotal": check_virustotal(url, submit_if_missing=submit_unknown_to_virustotal),
         "google_webrisk": check_webrisk(url),
-        "urlscan": check_urlscan(hostname),
+        "urlscan": check_urlscan(hostname, target_url=url, submit_fresh_scan=submit_urlscan_private),
         "abuseipdb": check_abuseipdb(hostname),
-        "whois": lookup_whois_rdap(url),
     }
+    if include_whois:
+        tasks["whois"] = lookup_whois_rdap(url)
     # Every provider has its own timeout; one outage must not erase other provider results.
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
     output = {}
@@ -375,19 +560,19 @@ async def lookup_reputation(target: str) -> dict:
         "target": url,
         "hostname": hostname,
         "external_data_shared": {
-            "virustotal": "full URL (lookup only; provider may store queried indicators)",
-            "google_webrisk": "full URL",
-            "urlscan": "hostname only; existing historical results searched; no new scan submitted",
+            "virustotal": ("full URL for cached report lookup" + (" and a fresh analysis submission" if submit_unknown_to_virustotal else "; no fresh submission requested") + "; queried/submitted indicators may be retained or shared by the provider"),
+            "google_webrisk": "full URL for threat-list lookup",
+            "urlscan": "hostname for historical search" + ("; full URL submitted for a fresh private remote-browser scan" if submit_urlscan_private else "; no fresh scan submitted"),
             "abuseipdb": "one public resolved IP address only, if available",
             "whois": "registered domain or public IP only, through RDAP",
         },
         "providers": {name: output[name] for name in ("virustotal", "google_webrisk", "urlscan", "abuseipdb")},
-        "whois": output["whois"],
+        "whois": output.get("whois", _provider("not_requested", "WHOIS/RDAP was not requested in this threat-intelligence pass.")),
         "configured_provider_count": len(configured),
         "limitations": [
             "A provider no-match result is not proof that the indicator is safe.",
             "Results depend on each provider's coverage, quota, freshness, and account tier.",
-            "URLScan searches previous records only; it does not submit a new scan in this lookup.",
+            "URLScan historical search is limited to returned records; a fresh private remote-browser scan is launched only when separately authorized.",
             "WHOIS/RDAP fields can be redacted, missing, cached, or unavailable.",
         ],
     }

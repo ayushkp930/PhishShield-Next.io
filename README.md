@@ -1,4 +1,4 @@
-# PhishShield Next 3.1.0
+# PhishShield Next 3.2.0
 
 **A defensive phishing investigation workbench** for suspicious URLs, raw email messages, HTML files, and bounded public-page inspection. It includes a browser-only frontend for GitHub Pages, a FastAPI backend, a CLI, explainable indicators, downloadable JSON/CSV reports, and browser-local case history.
 
@@ -8,26 +8,27 @@
 
 ### Browser UI (works as a static GitHub Pages site)
 - Modern responsive cyber-operations dashboard; no third-party JavaScript libraries or analytics.
-- URL/domain heuristic triage: URL user-info, HTTP, raw IP hosts, typosquatting-style brand tokens, punycode, suspicious TLD heuristics, long URLs, redirect parameters, suspicious file extensions, URL shorteners, and other explainable signals.
+- URL/domain heuristic triage: URL user-info, HTTP, raw IP hosts, lookalike-brand tokens, punycode, suspicious TLDs, long URLs, redirect parameters, suspicious file extensions, URL shorteners, and other explainable signals.
 - Email/message paste and `.eml` / `.txt` / `.log` / `.json` upload with a 2 MB client-side file cap. Email content stays in the browser for local analysis.
 - Local HTML source analysis: password fields, external form actions, iframes, hidden iframes, outbound links, and title extraction. Uploaded HTML is parsed as text, never rendered.
 - Batch scan of up to 200 URLs, with CSV export.
-- Investigation reports with scored indicators, recommended next steps, limitations, JSON export, and browser Print / Save as PDF.
+- Investigation reports with scored indicators, source-by-source coverage, recommended next steps, limitations, JSON export, and browser Print / Save as PDF.
 - Case history stored in browser `localStorage`; export JSON or clear it at any time.
 - Optional API configuration in Settings. The frontend does not contain a third-party API key.
 
 ### Backend and CLI
 - `POST /api/v1/scan` — local URL heuristics.
 - `POST /api/v1/email-analyze` — MIME/header/body triage, attachment filename metadata, reported SPF/DKIM/DMARC status parsing, URL extraction and URL triage. It does not extract or execute attachment content.
-- `POST /api/v1/reputation` — opt-in VirusTotal URL report lookup, Google Web Risk lookup, URLScan historical domain search, public-IP AbuseIPDB lookup, and WHOIS/RDAP metadata. This never submits a new URLScan scan.
+- `POST /api/v1/reputation` — opt-in VirusTotal URL report lookup with per-engine results, Google Web Risk URL lookup, URLScan historical domain search and optionally a fresh private scan, public-IP AbuseIPDB lookup, and WHOIS/RDAP metadata. Fresh submissions require separate consent.
 - `POST /api/v1/whois` — domain or public-IP registration/network metadata from RDAP, without sharing the full URL path/query.
-- `POST /api/v1/inspect` — optional bounded inspection of up to 5 public HTML pages on the same origin. It records redirect chains, HTTP status, title, selected response headers, form destinations, password fields, iframes and same-origin links. It does not visit external links.
+- `POST /api/v1/investigate` — combined local triage, DNS (A/AAAA/CNAME/MX/NS/TXT/CAA/SOA and DMARC), TLS certificate metadata, public certificate-transparency history, RDAP, optional bounded page crawl and opt-in external provider evidence. Source status and missing/disabled modules are returned explicitly.
+- `POST /api/v1/inspect` — optional bounded inspection of up to 10 public HTML pages on the same origin. It records redirect chains, HTTP status, title, selected response headers, form destinations, password fields, iframes and same-origin links. It does not visit external links.
 - `GET /health`, `GET /api/v1/history`, `GET /api/v1/scan/{id}`, `GET /report/{id}.json`, interactive docs at `/api/docs`.
 - CLI commands: `phishshield scan URL`, `phishshield email FILE`, `phishshield reputation URL`, `phishshield whois DOMAIN`, `phishshield inspect URL --pages 3`, and `phishshield web`.
 - SQLite report store for backend-originated scans.
 
 ### Safe inspection boundaries
-- The live inspector only accepts HTTP/HTTPS on standard ports 80/443 and uses a custom DNS resolver that rejects non-global/private/reserved addresses. Redirect targets are revalidated, each response is capped at 1 MB, redirects are bounded, per-request timeouts are enforced, page budget is at most five, and same-origin links only are followed.
+- The live inspector only accepts HTTP/HTTPS on standard ports 80/443 and uses a custom DNS resolver that rejects non-global/private/reserved addresses. Redirect targets are revalidated, each response is capped at 1 MB, redirects are bounded, per-request timeouts are enforced, page budget is at most ten, and same-origin links only are followed.
 - It does not run JavaScript, authenticate, submit forms, exploit vulnerabilities, download executable files, or follow off-site links.
 - Live inspection is **disabled by default in a deployment**. In a local `.env` created from `.env.example`, it is enabled for a local workstation. Treat public URL fetching as an abuse-sensitive feature.
 - The in-process rate limiter is an emergency backstop, not a complete anti-abuse system. Do not expose the live inspection endpoint to the public internet without additional durable rate limiting, authentication/challenge or abuse prevention, monitoring, usage limits and a reviewed deployment threat model.
@@ -88,9 +89,9 @@ pip install .
 uvicorn phishshield.web:app --host 0.0.0.0 --port "$PORT"
 ```
 
-To run with bounded inspection locally, set `PHISHSHIELD_INSPECT_ENABLED=true` in `.env`. **Never add a VirusTotal, URLScan, Google Web Risk, AbuseIPDB, or other provider secret to frontend JavaScript or GitHub Pages source.** This release integrates backend-only lookups. Configure the following secrets on the backend host: `VIRUSTOTAL_API_KEY`, `URLSCAN_API_KEY`, `GOOGLE_WEB_RISK_API_KEY`, and `ABUSEIPDB_API_KEY`. WHOIS/RDAP does not require an API key.
+To run with bounded inspection locally, set `PHISHSHIELD_INSPECT_ENABLED=true` in `.env`. **Never add a VirusTotal, URLScan, Google Web Risk, AbuseIPDB, or other provider secret to frontend JavaScript or GitHub Pages source.** This release integrates backend-only lookups plus optional DNS/TLS/certificate-transparency collection and a bounded same-origin crawler. Configure the following secrets on the backend host: `VIRUSTOTAL_API_KEY`, `URLSCAN_API_KEY`, `GOOGLE_WEB_RISK_API_KEY`, and `ABUSEIPDB_API_KEY`. WHOIS/RDAP does not require an API key.
 
-The external reputation endpoint is disabled by default in `render.yaml`; keep it disabled on an unrestricted public service until a durable abuse-control/authentication layer and usage budgets are in place. The current per-process rate limit is only a backstop. The UI requires a clear user consent checkbox before calling the endpoint. The VirusTotal lookup and Google Web Risk check send the **full submitted URL** to those providers; URLScan searches historic records by **hostname only**; AbuseIPDB receives only one **public resolved IP**; WHOIS/RDAP receives only the registered domain or public IP. This tool blocks common token/reset/invite keys in URL query parameters before third-party reputation lookup. Never submit private or sensitive URLs. VirusTotal documents that queried/submitted indicators may be added to its threat-intelligence dataset. <https://gtidocs.virustotal.com/reference/analysis>
+The external reputation endpoint is disabled by default in `render.yaml`; keep it disabled on an unrestricted public service until a durable abuse-control/authentication layer and usage budgets are in place. The current per-process rate limit is only a backstop. The UI requires a clear user consent checkbox before calling the endpoint. The VirusTotal lookup and Google Web Risk check send the **full submitted URL** to those providers; URLScan searches historic records by **hostname only**, with an optional separately authorized fresh private scan that runs in URLScan’s remote browser; AbuseIPDB receives only one **public resolved IP**; WHOIS/RDAP receives only the registered domain or public IP. This tool blocks common token/reset/invite keys in URL query parameters before third-party reputation lookup. Never submit private or sensitive URLs. VirusTotal documents that queried/submitted indicators may be added to its threat-intelligence dataset. Fresh VirusTotal and URLScan submissions must be explicitly checked in the UI, and sensitive query URLs are blocked. The combined report is a composite triage prioritization score, not a calibrated probability and not a reproduction of VirusTotal. <https://gtidocs.virustotal.com/reference/analysis>
 
 For local development, create `.env` from `.env.example` and put rotated secrets there (never commit `.env`). On Render, use the service Environment dashboard for each secret, set `PHISHSHIELD_REPUTATION_ENABLED=true` only after abuse controls are ready, and enable `PHISHSHIELD_WHOIS_ENABLED=true` if WHOIS is desired. Redeploy after changing environment variables.
 

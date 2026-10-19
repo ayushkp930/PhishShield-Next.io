@@ -27,7 +27,7 @@ def main():
     sub=parser.add_subparsers(dest='command',required=True)
     scan=sub.add_parser('scan',help='Analyze a URL/domain without fetching it'); scan.add_argument('target'); scan.add_argument('--json',action='store_true'); scan.add_argument('--no-history',action='store_true')
     email=sub.add_parser('email',help='Analyze a saved email text/EML file locally'); email.add_argument('path'); email.add_argument('--json',action='store_true')
-    inspect=sub.add_parser('inspect',help='Fetch and inspect a bounded set of public web pages'); inspect.add_argument('target'); inspect.add_argument('--pages',type=int,choices=range(1,6),default=3); inspect.add_argument('--json',action='store_true'); inspect.add_argument('--no-history',action='store_true')
+    inspect=sub.add_parser('inspect',help='Fetch and inspect a bounded set of public web pages'); inspect.add_argument('target'); inspect.add_argument('--pages',type=int,choices=range(1,11),default=3); inspect.add_argument('--json',action='store_true'); inspect.add_argument('--no-history',action='store_true')
     reputation=sub.add_parser('reputation',help='Query configured threat-intelligence providers and WHOIS/RDAP (shares indicator externally)'); reputation.add_argument('target'); reputation.add_argument('--json',action='store_true')
     whois=sub.add_parser('whois',help='Look up public domain/IP registration metadata via RDAP'); whois.add_argument('target'); whois.add_argument('--json',action='store_true')
     web=sub.add_parser('web',help='Start the web dashboard'); web.add_argument('--host',default=None); web.add_argument('--port',type=int,default=None)

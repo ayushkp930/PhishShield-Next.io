@@ -9,6 +9,8 @@ services:
     envVars:
       - key: PHISHSHIELD_INSPECT_ENABLED
         value: "false"
+      - key: PHISHSHIELD_NETWORK_METADATA_ENABLED
+        value: "false"
       - key: PHISHSHIELD_REPUTATION_ENABLED
         value: "false"
       - key: PHISHSHIELD_WHOIS_ENABLED
@@ -20,6 +22,10 @@ services:
       - key: PHISHSHIELD_WHOIS_LIMIT
         value: "15"
       - key: PHISHSHIELD_WHOIS_WINDOW_SECONDS
+        value: "600"
+      - key: PHISHSHIELD_FULL_LIMIT
+        value: "3"
+      - key: PHISHSHIELD_FULL_WINDOW_SECONDS
         value: "600"
       - key: VIRUSTOTAL_API_KEY
         sync: false

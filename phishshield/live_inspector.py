@@ -17,10 +17,10 @@ import aiohttp
 from yarl import URL
 
 MAX_URL_LENGTH = 4096
-MAX_REDIRECTS = 4
-MAX_PAGES = 5
+MAX_REDIRECTS = 5
+MAX_PAGES = 10
 MAX_BODY_BYTES = 1_000_000
-REQUEST_TIMEOUT_SECONDS = 7
+REQUEST_TIMEOUT_SECONDS = 5
 ALLOWED_PORTS = {80, 443}
 BLOCKED_SUFFIXES = (".localhost", ".local", ".internal", ".test", ".invalid", ".example")
 
@@ -45,6 +45,7 @@ class PageParser(HTMLParser):
         self._form_input_types: list[str] = []
         self.forms_with_password = 0
         self.external_form_actions: list[str] = []
+        self.resources: list[str] = []
 
     def handle_starttag(self, tag: str, attrs_tuple):
         attrs = dict(attrs_tuple)
@@ -53,6 +54,12 @@ class PageParser(HTMLParser):
             self._in_title = True
         elif tag == "a" and attrs.get("href"):
             self._append_url(self.links, attrs["href"])
+        elif tag in {"script", "img", "source", "video", "audio", "track", "embed"} and attrs.get("src"):
+            self._append_url(self.resources, attrs["src"])
+        elif tag == "link" and attrs.get("href"):
+            rel = {x.strip().lower() for x in (attrs.get("rel") or "").split()}
+            if rel & {"stylesheet", "preload", "modulepreload", "manifest", "icon", "preconnect", "dns-prefetch"}:
+                self._append_url(self.resources, attrs["href"])
         elif tag == "form":
             self._form_action = attrs.get("action") or self.base_url
             self._form_input_types = []
@@ -204,7 +211,7 @@ async def inspect_public_site(raw_url: str, max_pages: int = 3) -> dict:
     seen: set[str] = set()
     tls_validated = False
     root_host = urlsplit(first_url).hostname or ""
-    user_agent = "PhishShield-Next-DefensiveInspector/3.0 (+bounded HTML security review; no JavaScript execution)"
+    user_agent = "PhishShield-Next-DefensiveInspector/3.2 (+bounded HTML security review; no JavaScript execution)"
     async with aiohttp.ClientSession(
         connector=connector,
         timeout=timeout,
@@ -237,7 +244,9 @@ async def inspect_public_site(raw_url: str, max_pages: int = 3) -> dict:
                         headers = {k: v[:500] for k, v in response.headers.items() if k.lower() in {
                             "content-type", "server", "location", "strict-transport-security",
                             "content-security-policy", "x-frame-options", "x-content-type-options",
-                            "referrer-policy", "permissions-policy", "cache-control", "content-length"
+                            "referrer-policy", "permissions-policy", "cache-control", "content-length",
+                            "x-powered-by", "via", "date", "cross-origin-opener-policy",
+                            "cross-origin-resource-policy", "cross-origin-embedder-policy"
                         }}
                         content_type = response.headers.get("Content-Type", "")
                         if status in {301, 302, 303, 307, 308} and response.headers.get("Location"):
@@ -295,6 +304,7 @@ async def inspect_public_site(raw_url: str, max_pages: int = 3) -> dict:
             title = ""
             internal_links: list[str] = []
             external_links: list[str] = []
+            external_resources: list[str] = []
             frame_sources: list[str] = []
             form_actions: list[str] = []
             password_fields = iframes = hidden_iframes = external_form_actions = 0
@@ -341,6 +351,14 @@ async def inspect_public_site(raw_url: str, max_pages: int = 3) -> dict:
                     elif (urlsplit(target).hostname or "").lower() != (urlsplit(current).hostname or "").lower():
                         if target not in external_links and len(external_links) < 80:
                             external_links.append(target)
+                for resource in parser.resources:
+                    try:
+                        target = validate_target(resource)
+                    except UnsafeTarget:
+                        continue
+                    if (urlsplit(target).hostname or "").lower() != (urlsplit(current).hostname or "").lower():
+                        if target not in external_resources and len(external_resources) < 100:
+                            external_resources.append(target)
                 form_actions = parser.form_actions[:50]
                 frame_sources = parser.frame_sources[:50]
                 if "content-security-policy" not in lowered:
@@ -358,6 +376,8 @@ async def inspect_public_site(raw_url: str, max_pages: int = 3) -> dict:
                 "redirect_chain": url_chain,
                 "links": internal_links[:50],
                 "external_links": external_links[:50],
+                "resources": parser.resources[:100] if _is_html(content_type, response_bytes) else [],
+                "external_resources": external_resources[:100],
                 "frame_sources": frame_sources,
                 "form_actions": form_actions,
                 "external_form_actions": external_form_actions,
@@ -389,7 +409,7 @@ async def inspect_public_site(raw_url: str, max_pages: int = 3) -> dict:
         "limitations": [
             "Only public HTTP/HTTPS web pages are fetched; local/private/reserved IP addresses are blocked by a public-only DNS resolver.",
             "The inspector does not execute JavaScript, authenticate, submit forms, upload files, or download executable content.",
-            "Internal links are followed only within the same origin and up to the selected page budget; external links are listed but not visited.",
+            "Internal links are followed only within the same origin and up to the selected page budget; external links/resources are listed but not visited.",
             "This is a bounded page inspection, not a full browser sandbox, malware scan, or definitive phishing verdict.",
             "Do not expose a public scanning API without robust authentication/rate limiting, monitoring and abuse controls.",
         ],
